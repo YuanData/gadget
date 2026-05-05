@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>場館人數（weekday × 時段）</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="data.js"></script>
+
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif; margin: 16px; }
+    header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 12px; margin: 12px 0; }
+    .chart-wrap { height: 320px; }
+    label { font-weight: 600; }
+    select { padding: 6px 8px; }
+    .hint { color: #555; font-size: 13px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <label for="bucket">間隔：</label>
+      <select id="bucket">
+        <option value="5"selected>5 分鐘</option>
+        <option value="15">15 分鐘</option>
+        <option value="30">30 分鐘</option>
+        <option value="60">60 分鐘</option>
+      </select>
+    </div>
+    <div class="hint">X 軸固定 06:00~22:00</div>
+  </header>
+
+  <div class="card">
+    <h2>gym</h2>
+    <div class="chart-wrap"><canvas id="chartGym"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>swim</h2>
+    <div class="chart-wrap"><canvas id="chartSwim"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>ice</h2>
+    <div class="chart-wrap"><canvas id="chartIce"></canvas></div>
+  </div>
+
+  <script>
+    const WEEKDAYS = [
+      { key: "Mon", zh: "週一", color: "#9467bd" },
+      { key: "Tue", zh: "週二", color: "#C72C32" },
+      { key: "Wed", zh: "週三", color: "#1f77b4" },
+      { key: "Thu", zh: "週四", color: "#3E6F74" },
+      { key: "Fri", zh: "週五", color: "#FFD400" },
+      { key: "Sat", zh: "週六", color: "#654321" },
+      { key: "Sun", zh: "週日", color: "#2B2B2B" },
+    ];
+    const JS_DAY_TO_KEY = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+    const START_MIN = 6 * 60;
+    const END_MIN   = 22 * 60;
+
+    function pad2(n){ return String(n).padStart(2,"0"); }
+    function minToHHMM(totalMin){
+      const h = Math.floor(totalMin/60);
+      const m = totalMin % 60;
+      return `${pad2(h)}:${pad2(m)}`;
+    }
+
+    function parseTsLocal(ts){
+      const s = String(ts).trim();
+      const [datePart, timePart] = s.split("T");
+      const [Y,M,D] = datePart.split("-").map(Number);
+      const [hh,mm] = timePart.split(":").map(Number);
+      return new Date(Y, M-1, D, hh, mm, 0, 0);
+    }
+
+    function buildLabels(bucketMin){
+      const labels = [];
+      for (let t = START_MIN; t <= END_MIN; t += bucketMin) {
+        labels.push(minToHHMM(t));
+      }
+      return labels;
+    }
+
+    function aggregate(rows, field, bucketMin){
+      const bucketsCount = Math.floor((END_MIN - START_MIN) / bucketMin) + 1;
+
+      const acc = new Map();
+      for (const wd of WEEKDAYS) {
+        acc.set(wd.key, Array.from({length: bucketsCount}, () => []));
+      }
+
+      for (const r of rows) {
+        if (!r.ts) continue;
+
+        const d = parseTsLocal(r.ts);
+        const wdKey = JS_DAY_TO_KEY[d.getDay()];
+        if (!acc.has(wdKey)) continue;
+
+        const minutes = d.getHours() * 60 + d.getMinutes();
+        if (minutes < START_MIN || minutes > END_MIN) continue;
+
+        const idx = Math.floor((minutes - START_MIN) / bucketMin);
+
+        const v = Number.parseInt(String(r[field] ?? "").trim(), 10);
+        if (!Number.isFinite(v)) continue;
+
+        acc.get(wdKey)[idx].push(v);
+      }
+
+      const datasets = WEEKDAYS.map(wd => {
+        const series = acc.get(wd.key).map(arr => {
+          if (arr.length === 0) return null;
+          const sum = arr.reduce((a,b)=>a+b,0);
+          return Math.floor(sum / arr.length); // 捨去
+        });
+        return {
+          label: wd.zh,
+          data: series,
+          borderColor: wd.color,
+          backgroundColor: wd.color,
+          spanGaps: true,
+          pointRadius: 0,
+          borderWidth: 2,
+          tension: 0.25,
+        };
+      });
+
+      return datasets;
+    }
+
+    function makeLineChart(canvasId, labels, datasets){
+      const ctx = document.getElementById(canvasId);
+      return new Chart(ctx, {
+        type: "line",
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: { position: "top" },
+            tooltip: { enabled: true }
+          },
+          scales: {
+            x: { title: { display: true, text: "時間（06:00~22:00）" }, ticks: { maxTicksLimit: 16 } },
+            y: { title: { display: true, text: "人數" }, beginAtZero: true, ticks: { precision: 0 } }
+          }
+        }
+      });
+    }
+
+    let rawRows = [];
+    let charts = { gym: null, swim: null, ice: null };
+
+    function renderAll(){
+      const bucketMin = Number(document.getElementById("bucket").value);
+      const labels = buildLabels(bucketMin);
+
+      const gymDs  = aggregate(rawRows, "gym",  bucketMin);
+      const swimDs = aggregate(rawRows, "swim", bucketMin);
+      const iceDs  = aggregate(rawRows, "ice",  bucketMin);
+
+      for (const k of Object.keys(charts)) {
+        if (charts[k]) charts[k].destroy();
+      }
+
+      charts.gym  = makeLineChart("chartGym",  labels, gymDs);
+      charts.swim = makeLineChart("chartSwim", labels, swimDs);
+      charts.ice  = makeLineChart("chartIce",  labels, iceDs);
+    }
+
+    function loadCsvFromDataJs(){
+      const csvText = String(window.TCSPORTS_CSV_TEXT ?? "").trim();
+      if (!csvText) {
+        alert("data.js 未載入");
+        return;
+      }
+
+      const parsed = Papa.parse(csvText, {
+        header: true,
+        skipEmptyLines: true,
+      });
+
+      if (parsed.errors?.length) console.warn("CSV parse warnings:", parsed.errors);
+
+      rawRows = parsed.data;
+      renderAll();
+    }
+
+    document.getElementById("bucket").addEventListener("change", renderAll);
+    loadCsvFromDataJs();
+  </script>
+</body>
+</html>
