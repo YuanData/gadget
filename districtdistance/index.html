@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>行政區距離計算</title>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    select { padding: 6px; margin-bottom: 10px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background: #f5f5f5; }
+  </style>
+</head>
+<body>
+
+<h2>行政區距離排序</h2>
+
+<select id="areaSelect"></select>
+
+<table>
+  <thead>
+    <tr>
+      <th>城市</th>
+      <th>區域</th>
+      <th>距離 (km)</th>
+    </tr>
+  </thead>
+  <tbody id="resultTable"></tbody>
+</table>
+
+<script src="data.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  if (typeof areas === "undefined") {
+    console.error("data.js 沒有正確載入（areas undefined）");
+    return;
+  }
+
+  function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371; // 地球半徑 km
+    const toRad = d => d * Math.PI / 180;
+
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) ** 2;
+
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+
+  const select = document.getElementById("areaSelect");
+  const table = document.getElementById("resultTable");
+
+  // 初始化下拉選單
+  areas.forEach((a, idx) => {
+    const option = document.createElement("option");
+    option.value = idx;
+    option.textContent = `${a.city}${a.district}`;
+    select.appendChild(option);
+  });
+
+// 預設 板橋區
+const defaultIndex = areas.findIndex(
+  a => a.city === "新北市" && a.district === "板橋區"
+);
+select.value = defaultIndex !== -1 ? defaultIndex : 0;
+
+  function render() {
+    const base = areas[select.value];
+
+    const results = areas.map(a => {
+      const dist = haversine(base.lat, base.lng, a.lat, a.lng);
+      return { ...a, distance: dist };
+    });
+
+    results.sort((a, b) => a.distance - b.distance);
+
+    table.innerHTML = results.map(r => `
+      <tr>
+        <td>${r.city}</td>
+        <td>${r.district}</td>
+        <td>${r.distance.toFixed(2)}</td>
+      </tr>
+    `).join("");
+  }
+
+  select.addEventListener("change", render);
+
+  render();
+});
+</script>
+
+</body>
+</html>
