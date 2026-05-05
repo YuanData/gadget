@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>水溫混合與冷卻計算器</title>
+  <style>
+    body { font-family: Arial; padding: 20px; max-width: 800px; margin: auto; }
+    input, button { margin: 5px; padding: 8px; }
+    .section { margin-bottom: 30px; }
+  </style>
+</head>
+<body>
+
+<h1>水溫計算工具</h1>
+
+<div class="section">
+  <h2>1️⃣ 混水反推（目標溫度 → 配水）</h2>
+  <label>目標溫度 (°C):</label>
+  <input type="number" id="targetTempMix" value="90">
+  <br>
+  <label>總水量 (cc):</label>
+  <input type="number" id="totalVolume" value="200">
+  <br>
+  <button onclick="calcMix()">計算配水</button>
+  <p id="mixResult"></p>
+</div>
+
+<div class="section">
+  <h2>2️⃣ 冷卻時間估算</h2>
+  <label>目標溫度 (°C):</label>
+  <input type="number" id="targetTempCool" value="90">
+  <br>
+  <button onclick="calcCooling()">計算時間</button>
+  <p id="coolResult"></p>
+</div>
+
+<script>
+function calcMix() {
+  const target = parseFloat(document.getElementById('targetTempMix').value);
+  const total = parseFloat(document.getElementById('totalVolume').value);
+
+  const Th = 100;
+  const Tc = 25;
+
+  if (target >= Th || target <= Tc) {
+    document.getElementById('mixResult').innerText = '目標溫度必須介於 25°C 與 100°C 之間';
+    return;
+  }
+
+  // 公式: Vh = V * (T_target - Tc) / (Th - Tc)
+  const hot = total * (target - Tc) / (Th - Tc);
+  const cold = total - hot;
+
+  const ratio = (hot / cold).toFixed(1);
+
+  document.getElementById('mixResult').innerText =
+    `100°C熱水: ${hot.toFixed(1)} cc\n25°C冷水: ${cold.toFixed(1)} cc\n比例(熱:冷) ≈ ${ratio}:1`;
+}
+
+function calcCooling() {
+  const T0 = 100;
+  const Tenv = 25;
+  const target = parseFloat(document.getElementById('targetTempCool').value);
+
+  const k = 0.018;
+
+  if (target >= T0 || target <= Tenv) {
+    document.getElementById('coolResult').innerText = '目標溫度必須介於 25°C 與 100°C 之間';
+    return;
+  }
+
+  const t = Math.log((T0 - Tenv) / (target - Tenv)) / k;
+
+  const minutes = Math.floor(t);
+  const seconds = Math.round((t - minutes) * 60 / 10) * 10;
+
+  document.getElementById('coolResult').innerText =
+    `約需時間: ${minutes} 分 ${seconds} 秒 (200cc 馬克杯估算)`;
+}
+</script>
+
+</body>
+</html>
