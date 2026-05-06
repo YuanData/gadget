@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prime Factorization</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 520px;
+    }
+
+    input {
+      width: 220px;
+      padding: 8px;
+      font-size: 16px;
+      margin-right: 8px;
+    }
+
+    button {
+      padding: 8px 12px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    #result {
+      margin-top: 16px;
+      font-size: 18px;
+      font-weight: 600;
+      word-break: break-word;
+    }
+
+    #hint {
+      color: #666;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>質因數分解</h1>
+    <label for="numberInput">請輸入正整數：</label>
+    <div>
+      <input id="numberInput" type="number" min="2" step="1" placeholder="例如：72">
+      <button id="factorBtn" type="button">分解</button>
+    </div>
+    <div id="hint">輸入 2 以上的整數，例如 72。</div>
+    <div id="result"></div>
+  </div>
+
+  <script>
+    // 取得輸入欄位的 DOM 物件。
+    const numberInput = document.getElementById("numberInput");
+    // 取得按鈕的 DOM 物件。
+    const factorBtn = document.getElementById("factorBtn");
+    // 取得結果顯示區塊的 DOM 物件。
+    const result = document.getElementById("result");
+
+    // 建立質因數分解函式，接收一個正整數並回傳 Map<質數, 次方>。
+    function primeFactorization(value) {
+      // 用來保存每個質數與其指數次方。
+      const factors = new Map();
+      // 建立可被持續除法更新的工作變數，避免改動原始輸入值。
+      let n = value;
+      // 先處理質數 2，可把偶數快速全部除盡，降低後續迴圈次數。
+      while (n % 2 === 0) {
+        // 讀取目前質數 2 的次方，若尚未出現則從 0 開始。
+        const currentExponent = factors.get(2) || 0;
+        // 將質數 2 的次方加一並寫回。
+        factors.set(2, currentExponent + 1);
+        // 將 n 除以 2，持續往下分解。
+        n /= 2;
+      }
+      // 從 3 開始，只檢查奇數因數，並在 factor * factor <= n 時迭代。
+      for (let factor = 3; factor * factor <= n; factor += 2) {
+        // 只要目前因數可整除 n，就持續把它除盡並累計次方。
+        while (n % factor === 0) {
+          // 讀取目前因數的次方，若尚未出現則從 0 開始。
+          const currentExponent = factors.get(factor) || 0;
+          // 將目前因數次方加一並寫回。
+          factors.set(factor, currentExponent + 1);
+          // 更新 n，讓數字持續縮小以提升效率。
+          n /= factor;
+        }
+      }
+      // 若最後 n 大於 1，代表 n 本身就是最後一個質數因子。
+      if (n > 1) {
+        // 將最後質數因子加入結果，次方固定為 1。
+        factors.set(n, (factors.get(n) || 0) + 1);
+      }
+      // 回傳完整質因數分解結果。
+      return factors;
+    }
+
+    // 建立顯示格式函式，將 Map<質數, 次方> 轉為字串。
+    function formatFactorization(originalValue, factors) {
+      // 將每個「質數^次方」轉成可輸出的片段陣列。
+      const terms = [];
+      // 依照 Map 插入順序走訪各個質因數與次方。
+      for (const [prime, exponent] of factors.entries()) {
+        // 當次方為 1 時只顯示質數本身，避免冗餘的 ^1。
+        if (exponent === 1) {
+          terms.push(String(prime));
+        } else {
+          // 當次方大於 1 時用 p^k 形式顯示。
+          terms.push(`${prime}^${exponent}`);
+        }
+      }
+      // 回傳最終格式，例如「72 = 2^3 × 3^2」。
+      return `${originalValue} = ${terms.join(" × ")}`;
+    }
+
+    // 建立計算流程函式，統一處理按鈕與 Enter 事件觸發。
+    function handleFactorization() {
+      // 取得並去除前後空白，避免不必要輸入問題。
+      const rawValue = numberInput.value.trim();
+      // 將字串轉成數字，供後續數值驗證。
+      const numericValue = Number(rawValue);
+      // 驗證是否為有限數值、整數且大於等於 2。
+      const isValid =
+        rawValue !== "" &&
+        Number.isFinite(numericValue) &&
+        Number.isInteger(numericValue) &&
+        numericValue >= 2;
+      // 若輸入不合法，直接顯示錯誤訊息並結束。
+      if (!isValid) {
+        result.textContent = "請輸入 2 以上的整數。";
+        return;
+      }
+      // 執行質因數分解並取得因數次方對應表。
+      const factors = primeFactorization(numericValue);
+      // 將分解結果轉成指定格式並顯示。
+      result.textContent = formatFactorization(numericValue, factors);
+    }
+
+    // 綁定按鈕點擊事件，觸發分解流程。
+    factorBtn.addEventListener("click", handleFactorization);
+    // 綁定輸入框鍵盤事件，按 Enter 也可觸發分解流程。
+    numberInput.addEventListener("keydown", (event) => {
+      // 判斷是否按下 Enter 鍵。
+      if (event.key === "Enter") {
+        // 執行分解流程。
+        handleFactorization();
+      }
+    });
+  </script>
+</body>
+</html>
